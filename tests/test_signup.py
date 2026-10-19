@@ -58,3 +58,59 @@ class SignupTests(TestCase):
 
         self.assertEqual(response.status_code, 404)
         self.assertEqual(response.json(), {"detail": "Activity not found"})
+
+    def test_unregister_removes_only_selected_participant(self):
+        participants = self.activities["Chess Club"]["participants"]
+        original = participants.copy()
+        email = original[0]
+        response = self.client.delete(
+            "/activities/Chess Club/unregister", params={"email": email}
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.json(), {"message": f"Unregistered {email} from Chess Club"}
+        )
+        self.assertEqual(participants, original[1:])
+        signup = self.client.post(
+            "/activities/Chess Club/signup", params={"email": email}
+        )
+        self.assertEqual(signup.status_code, 200)
+
+    def test_unregister_unknown_activity(self):
+        response = self.client.delete(
+            "/activities/Unknown/unregister", params={"email": "new@mergington.edu"}
+        )
+
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.json(), {"detail": "Activity not found"})
+
+    def test_unregister_missing_participant_leaves_activity_unchanged(self):
+        original = deepcopy(self.activities)
+        response = self.client.delete(
+            "/activities/Chess Club/unregister", params={"email": "new@mergington.edu"}
+        )
+
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(
+            response.json(), {"detail": "Student is not signed up for this activity"}
+        )
+        self.assertEqual(self.activities, original)
+
+    def test_unregister_requires_email(self):
+        response = self.client.delete("/activities/Chess Club/unregister")
+
+        self.assertEqual(response.status_code, 422)
+
+    def test_static_assets_require_revalidation(self):
+        for asset in ("index.html", "app.js", "styles.css"):
+            with self.subTest(asset=asset):
+                response = self.client.get(f"/static/{asset}")
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.headers["cache-control"], "no-cache")
+                cached_response = self.client.get(
+                    f"/static/{asset}",
+                    headers={"If-None-Match": response.headers["etag"]},
+                )
+                self.assertEqual(cached_response.status_code, 304)
+                self.assertEqual(cached_response.headers["cache-control"], "no-cache")
